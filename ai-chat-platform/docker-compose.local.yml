@@ -1,0 +1,9 @@
+services:
+  backend:
+    environment:
+      # Local backend development override. Keep backend/.env pointed at Supabase,
+      # and use this compose file when you want the API to boot without external DB access.
+      SUPABASE_DB_URL: jdbc:h2:mem:aichat;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+      SUPABASE_DB_USERNAME: sa
+      SUPABASE_DB_PASSWORD: ""
+      JPA_DDL_AUTO: update

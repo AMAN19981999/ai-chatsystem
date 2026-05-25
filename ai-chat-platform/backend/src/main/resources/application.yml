@@ -1,0 +1,31 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: ai-chat-platform
+  datasource:
+    url: ${SUPABASE_DB_URL:jdbc:h2:mem:aichat;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE}
+    username: ${SUPABASE_DB_USERNAME:sa}
+    password: ${SUPABASE_DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+app:
+  cors:
+    allowed-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
+  jwt:
+    secret: ${JWT_SECRET:replace-this-with-a-64-character-production-secret}
+    expiration-minutes: ${JWT_EXPIRATION_MINUTES:60}
+  supabase:
+    url: ${SUPABASE_URL:https://your-project.supabase.co}
+    anon-key: ${SUPABASE_ANON_KEY:${SUPABASE_SERVICE_ROLE_KEY:your-supabase-anon-key}}
+    service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:your-supabase-service-role-key}
+  openai:
+    api-key: ${OPENAI_API_KEY:your-openai-api-key}
+    model: ${OPENAI_MODEL:gpt-4.1-mini}
