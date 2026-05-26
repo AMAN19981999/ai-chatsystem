@@ -35,4 +35,6 @@ public class DirectConversationEntity {
     private Instant createdAt;
 
     private Instant updatedAt;
+
+    private UUID blockedByUserId;
 }

@@ -7,7 +7,7 @@ public record AppProperties(
         Cors cors,
         Jwt jwt,
         Supabase supabase,
-        OpenAi openai
+        Groq groq
 ) {
     public record Cors(String allowedOrigin) {
     }
@@ -18,6 +18,6 @@ public record AppProperties(
     public record Supabase(String url, String anonKey, String serviceRoleKey) {
     }
 
-    public record OpenAi(String apiKey, String model) {
+    public record Groq(String apiKey, String model) {
     }
 }

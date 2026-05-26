@@ -52,6 +52,11 @@ public class DirectMessageController {
         return directMessageService.sendMessage(conversationId, request);
     }
 
+    @PostMapping("/messages/{messageId}/report-spam")
+    public void reportSpam(@PathVariable UUID messageId) {
+        directMessageService.reportSpam(messageId);
+    }
+
     @GetMapping("/auto-reply/settings")
     public AutoReplySettingsDto getAutoReplySettings(@RequestHeader("Authorization") String authorization) {
         return autoReplyService.getSettings(resolveSupabaseAuthUserId(authorization));

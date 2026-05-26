@@ -10,12 +10,12 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class AiReplyService {
 
-    private final OpenAiService openAiService;
+    private final GroqService groqService;
     private final MessageService messageService;
     private final SimpMessagingTemplate messagingTemplate;
 
     public MessageDto createReply(AiReplyRequest request) {
-        String replyText = openAiService.generateReply(request.content());
+        String replyText = groqService.generateReply(request.content());
         MessageDto reply = messageService.createAssistantMessage(request.chatId(), replyText);
         messagingTemplate.convertAndSend("/topic/chats/" + request.chatId(), reply);
         return reply;
