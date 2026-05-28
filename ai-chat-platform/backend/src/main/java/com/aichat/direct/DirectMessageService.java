@@ -2,6 +2,8 @@ package com.aichat.direct;
 
 import com.aichat.users.AppUserEntity;
 import com.aichat.users.AppUserRepository;
+import com.aichat.ai.GroqService;
+import com.aichat.websocket.PresenceManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,6 +25,8 @@ public class DirectMessageService {
     private final DirectConversationRepository conversationRepository;
     private final DirectMessageRepository messageRepository;
     private final DirectAutoReplyService autoReplyService;
+    private final GroqService groqService;
+    private final PresenceManager presenceManager;
 
     public List<DirectConversationDto> listConversations() {
         AppUserEntity currentUser = currentUser();
@@ -112,12 +116,15 @@ public class DirectMessageService {
         return sendMessage(conversationId, request, currentUser);
     }
 
-    private DirectMessageDto sendMessage(
+    public DirectMessageDto sendMessage(
             UUID conversationId,
             SendDirectMessageRequest request,
             AppUserEntity currentUser
     ) {
         DirectConversationEntity conversation = findConversationForUser(conversationId, currentUser);
+        if (conversation.getStatus() == DirectConversationStatus.BLOCKED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This conversation is blocked.");
+        }
         requireAccepted(conversation);
 
         Instant now = Instant.now();
@@ -134,9 +141,45 @@ public class DirectMessageService {
         conversationRepository.save(conversation);
         if (!message.isAiGenerated()) {
             autoReplyService.scheduleIfNeeded(conversation, message);
+            
+            // Automated Spam Detection
+            GroqService.SpamAnalysis analysis = groqService.analyzeMessage(message.getContent());
+            if (analysis.isSpam()) {
+                message.setSpam(true);
+                messageRepository.save(message);
+
+                // Auto-block the conversation
+                conversation.setStatus(DirectConversationStatus.BLOCKED);
+                conversation.setUpdatedAt(Instant.now());
+                conversation.setBlockedByUserId(null); // System-level block
+                conversationRepository.save(conversation);
+            }
         }
 
         return toMessageDto(message);
+    }
+
+    public void reportSpam(UUID messageId) {
+        AppUserEntity currentUser = currentUser();
+        DirectMessageEntity message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found."));
+
+        DirectConversationEntity conversation = conversationRepository.findById(message.getConversationId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found."));
+
+        if (!conversation.getRequesterId().equals(currentUser.getId()) && !conversation.getRecipientId().equals(currentUser.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not part of this conversation.");
+        }
+
+        // 1. Mark as spam
+        message.setSpam(true);
+        messageRepository.save(message);
+
+        // 2. Block conversation
+        conversation.setStatus(DirectConversationStatus.BLOCKED);
+        conversation.setBlockedByUserId(currentUser.getId());
+        conversation.setUpdatedAt(Instant.now());
+        conversationRepository.save(conversation);
     }
 
     private AppUserEntity currentUser() {
@@ -186,6 +229,7 @@ public class DirectMessageService {
                 otherUser.getDisplayName(),
                 conversation.getStatus() == DirectConversationStatus.PENDING
                         && conversation.getRecipientId().equals(currentUser.getId()),
+                presenceManager.isUserOnline(otherUser.getUsername()),
                 conversation.getUpdatedAt()
         );
     }
@@ -201,6 +245,7 @@ public class DirectMessageService {
                 sender.getUsername(),
                 message.getContent(),
                 message.isAiGenerated(),
+                message.isSpam(),
                 message.getCreatedAt()
         );
     }

@@ -19,11 +19,12 @@ export type SendMessagePayload = {
 
 export type DirectConversation = {
   id: string;
-  status: 'PENDING' | 'ACCEPTED';
+  status: 'PENDING' | 'ACCEPTED' | 'BLOCKED';
   otherUserId: string;
   otherUsername: string;
   otherDisplayName: string;
   incomingRequest: boolean;
+  otherUserOnline: boolean;
   updatedAt: string;
 };
 

@@ -30,14 +30,39 @@ export const createDirectSocket = (
   conversationId: string,
   token: string,
   onMessage: (message: DirectMessage) => void,
+  onTyping?: (typing: { username: string; typing: boolean }) => void,
+  onPresence?: (presence: { username: string; online: boolean }) => void,
 ) => {
   const client = new Client({
     webSocketFactory: () => new SockJS(env.wsUrl),
     reconnectDelay: 5000,
     onConnect: () => {
-      client.subscribe(`/topic/direct/${conversationId}`, (frame) => {
-        onMessage(JSON.parse(frame.body) as DirectMessage);
+      // 1. Register presence immediately upon connection
+      client.publish({
+        destination: '/app/presence.register',
+        body: JSON.stringify({ token }),
       });
+
+      // 2. Subscribe to general presence updates
+      if (onPresence) {
+        client.subscribe('/topic/presence', (frame) => {
+          onPresence(JSON.parse(frame.body) as { username: string; online: boolean });
+        });
+      }
+
+      // 3. Subscribe to active conversation messages
+      if (conversationId && conversationId !== 'global') {
+        client.subscribe(`/topic/direct/${conversationId}`, (frame) => {
+          onMessage(JSON.parse(frame.body) as DirectMessage);
+        });
+      }
+
+      // 4. Subscribe to active conversation typing indicators
+      if (conversationId && conversationId !== 'global' && onTyping) {
+        client.subscribe(`/topic/direct/${conversationId}/typing`, (frame) => {
+          onTyping(JSON.parse(frame.body) as { username: string; typing: boolean });
+        });
+      }
     },
   });
 
@@ -48,6 +73,12 @@ export const createDirectSocket = (
       client.publish({
         destination: '/app/direct.send',
         body: JSON.stringify({ conversationId, content, token }),
+      });
+    },
+    sendTyping: (typing: boolean) => {
+      client.publish({
+        destination: '/app/direct.typing',
+        body: JSON.stringify({ conversationId, typing, token }),
       });
     },
   };

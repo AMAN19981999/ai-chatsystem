@@ -26,6 +26,6 @@ app:
     url: ${SUPABASE_URL:https://your-project.supabase.co}
     anon-key: ${SUPABASE_ANON_KEY:${SUPABASE_SERVICE_ROLE_KEY:your-supabase-anon-key}}
     service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:your-supabase-service-role-key}
-  openai:
-    api-key: ${OPENAI_API_KEY:your-openai-api-key}
-    model: ${OPENAI_MODEL:gpt-4.1-mini}
+  groq:
+    api-key: ${GROQ_API_KEY:your-groq-api-key}
+    model: ${GROQ_MODEL:llama3-8b-8192}

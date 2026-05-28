@@ -9,6 +9,7 @@ public record DirectConversationDto(
         String otherUsername,
         String otherDisplayName,
         boolean incomingRequest,
+        boolean otherUserOnline,
         Instant updatedAt
 ) {
 }

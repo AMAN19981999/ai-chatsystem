@@ -2,7 +2,7 @@ create table if not exists public.direct_conversations (
     id uuid primary key default gen_random_uuid(),
     requester_id uuid not null references public.app_users(id) on delete cascade,
     recipient_id uuid not null references public.app_users(id) on delete cascade,
-    status text not null check (status in ('PENDING', 'ACCEPTED')),
+    status text not null check (status in ('PENDING', 'ACCEPTED', 'BLOCKED')),
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     constraint direct_conversations_no_self_request check (requester_id <> recipient_id)

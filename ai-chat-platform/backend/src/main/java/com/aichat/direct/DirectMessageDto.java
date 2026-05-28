@@ -9,6 +9,7 @@ public record DirectMessageDto(
         String senderUsername,
         String content,
         boolean aiGenerated,
+        boolean isSpam,
         Instant createdAt
 ) {
 }

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState, useRef } from 'react';
 import { Check, SendHorizontal, UserPlus } from 'lucide-react';
 import { chatService } from '../services/chatService';
 import { useAuthStore } from '../store/authStore';
@@ -14,6 +14,13 @@ export const ChatPage = () => {
   const [username, setUsername] = useState('');
   const [draft, setDraft] = useState('');
   const [notice, setNotice] = useState('');
+  
+  // Real-time tracking states
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [typingStatus, setTypingStatus] = useState<Record<string, Record<string, boolean>>>({});
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const [autoReplySettings, setAutoReplySettings] = useState<AutoReplySettings>({
     enabled: false,
     delayMinutes: 5,
@@ -24,6 +31,15 @@ export const ChatPage = () => {
     void chatService.listDirectConversations().then((items) => {
       setConversations(items);
       setActiveConversationId((current) => current ?? items[0]?.id ?? null);
+
+      // Extract initial online users
+      const initialOnline = new Set<string>();
+      items.forEach((c) => {
+        if (c.otherUserOnline) {
+          initialOnline.add(c.otherUsername.toLowerCase());
+        }
+      });
+      setOnlineUsers(initialOnline);
     });
     void chatService.getAutoReplySettings().then(setAutoReplySettings);
   }, []);
@@ -44,24 +60,48 @@ export const ChatPage = () => {
   }, [activeConversationId, conversations]);
 
   useEffect(() => {
-    if (!token || !activeConversationId) {
+    if (!token) {
       return;
     }
 
-    const activeConversation = conversations.find((item) => item.id === activeConversationId);
-    if (activeConversation?.status !== 'ACCEPTED') {
-      return;
-    }
+    // Connect to specific conversation channel if accepted, else a general fallback
+    const activeConv = conversations.find((item) => item.id === activeConversationId);
+    const targetConversationId = (activeConv?.status === 'ACCEPTED') ? activeConversationId : 'global';
 
-    const nextSocket = createDirectSocket(activeConversationId, token, (message) => {
-      setMessages((items) => {
-        if (items.some((item) => item.id === message.id)) {
-          return items;
+    const nextSocket = createDirectSocket(
+      targetConversationId || 'global',
+      token,
+      (message) => {
+        setMessages((items) => {
+          if (items.some((item) => item.id === message.id)) {
+            return items;
+          }
+          return [...items, message];
+        });
+      },
+      (typingEvent) => {
+        if (targetConversationId && targetConversationId !== 'global') {
+          setTypingStatus((prev) => ({
+            ...prev,
+            [targetConversationId]: {
+              ...prev[targetConversationId],
+              [typingEvent.username]: typingEvent.typing,
+            },
+          }));
         }
-
-        return [...items, message];
-      });
-    });
+      },
+      (presenceEvent) => {
+        setOnlineUsers((prev) => {
+          const next = new Set(prev);
+          if (presenceEvent.online) {
+            next.add(presenceEvent.username.toLowerCase());
+          } else {
+            next.delete(presenceEvent.username.toLowerCase());
+          }
+          return next;
+        });
+      }
+    );
     nextSocket.connect();
     setSocket(nextSocket);
 
@@ -113,6 +153,27 @@ export const ChatPage = () => {
     setNotice(saved.enabled ? `AI auto-reply after ${saved.delayMinutes} min.` : 'AI auto-reply off.');
   };
 
+  const handleDraftChange = (text: string) => {
+    setDraft(text);
+    if (!socket || !activeConversation || activeConversation.status !== 'ACCEPTED') {
+      return;
+    }
+
+    if (!isTyping) {
+      setIsTyping(true);
+      socket.sendTyping(true);
+    }
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+      socket.sendTyping(false);
+    }, 3000);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -125,6 +186,15 @@ export const ChatPage = () => {
       setNotice('Accept the request before sending messages.');
       return;
     }
+
+    // Reset typing indicator immediately on send
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    if (isTyping && socket) {
+      socket.sendTyping(false);
+    }
+    setIsTyping(false);
 
     setDraft('');
     if (socket) {
@@ -220,7 +290,12 @@ export const ChatPage = () => {
                 conversation.id === activeConversationId ? 'bg-stone-100 text-ink' : 'text-stone-700'
               } hover:bg-stone-100`}
             >
-              <span className="block truncate">@{conversation.otherUsername}</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="block truncate font-semibold">@{conversation.otherUsername}</span>
+                {onlineUsers.has(conversation.otherUsername.toLowerCase()) && (
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" title="Online"></span>
+                )}
+              </div>
               <span className="mt-1 block text-xs font-normal text-stone-500">
                 {conversation.status === 'ACCEPTED'
                   ? conversation.otherDisplayName
@@ -236,9 +311,17 @@ export const ChatPage = () => {
       <section className="flex min-w-0 flex-col">
         <header className="flex h-16 items-center justify-between border-b border-stone-200 bg-white px-6">
           <div>
-            <h1 className="text-base font-semibold text-ink">
-              {activeConversation ? `@${activeConversation.otherUsername}` : 'Messages'}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-semibold text-ink">
+                {activeConversation ? `@${activeConversation.otherUsername}` : 'Messages'}
+              </h1>
+              {activeConversation && onlineUsers.has(activeConversation.otherUsername.toLowerCase()) && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 animate-pulse">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                  online
+                </span>
+              )}
+            </div>
             <p className="text-sm text-stone-500">
               {activeConversation
                 ? activeConversation.status === 'ACCEPTED'
@@ -268,26 +351,40 @@ export const ChatPage = () => {
                 Messages unlock when the request is accepted.
               </p>
             ) : (
-              messages.map((message) => {
-                const isMine = message.senderUsername !== activeConversation.otherUsername;
+              <>
+                {messages.map((message) => {
+                  const isMine = message.senderUsername !== activeConversation.otherUsername;
 
-                return (
-                  <article
-                    key={message.id}
-                    className={
-                      isMine
-                        ? 'ml-auto max-w-[80%] rounded-lg bg-accent px-4 py-3 text-white'
-                        : 'mr-auto max-w-[80%] rounded-lg border border-stone-200 bg-white px-4 py-3 text-ink'
-                    }
-                  >
-                    <p className="mb-1 text-xs font-semibold opacity-75">
-                      @{message.senderUsername}
-                      {message.aiGenerated ? ' · AI' : ''}
-                    </p>
-                    <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
-                  </article>
-                );
-              })
+                  return (
+                    <article
+                      key={message.id}
+                      className={
+                        isMine
+                          ? 'ml-auto max-w-[80%] rounded-lg bg-accent px-4 py-3 text-white'
+                          : 'mr-auto max-w-[80%] rounded-lg border border-stone-200 bg-white px-4 py-3 text-ink'
+                      }
+                    >
+                      <p className="mb-1 text-xs font-semibold opacity-75">
+                        @{message.senderUsername}
+                        {message.aiGenerated ? ' · AI' : ''}
+                      </p>
+                      <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
+                    </article>
+                  );
+                })}
+
+                {/* Real-time Typing Indicator */}
+                {activeConversationId && typingStatus[activeConversationId]?.[activeConversation.otherUsername] ? (
+                  <div className="mr-auto flex items-center gap-2 rounded-lg border border-stone-100 bg-stone-50 px-4 py-2 text-xs text-stone-500 italic">
+                    <span className="flex gap-1">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-stone-400 [animation-delay:-0.3s]"></span>
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-stone-400 [animation-delay:-0.15s]"></span>
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-stone-400"></span>
+                    </span>
+                    @{activeConversation.otherUsername} is typing...
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
         </div>
@@ -296,7 +393,7 @@ export const ChatPage = () => {
           <div className="mx-auto flex max-w-3xl gap-3">
             <input
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => handleDraftChange(event.target.value)}
               className="h-11 flex-1 rounded-md border border-stone-300 px-4 outline-none focus:border-accent"
               disabled={!activeConversation || activeConversation.status !== 'ACCEPTED'}
               placeholder={

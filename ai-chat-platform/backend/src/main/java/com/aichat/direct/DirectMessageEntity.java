@@ -32,4 +32,6 @@ public class DirectMessageEntity {
     private boolean aiGenerated;
 
     private Instant createdAt;
+
+    private boolean isSpam;
 }

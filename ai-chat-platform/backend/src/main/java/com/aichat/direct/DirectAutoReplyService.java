@@ -1,6 +1,6 @@
 package com.aichat.direct;
 
-import com.aichat.ai.OpenAiService;
+import com.aichat.ai.GroqService;
 import com.aichat.users.AppUserEntity;
 import com.aichat.users.AppUserRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,7 @@ public class DirectAutoReplyService {
     private final AppUserRepository appUserRepository;
     private final DirectConversationRepository conversationRepository;
     private final DirectMessageRepository messageRepository;
-    private final OpenAiService openAiService;
+    private final GroqService groqService;
     private final SimpMessagingTemplate messagingTemplate;
     private final TaskScheduler taskScheduler;
 
@@ -116,11 +116,13 @@ public class DirectAutoReplyService {
 
         String prompt = """
                 You are writing exactly one chat message on behalf of %s (@%s).
-                Read the recent conversation below. Reply to the most recent human message.
-                Keep the reply natural, short, and in the same language as the latest message when possible.
+                Analyze the entire chat history below to understand the context and tone. 
+                Reply naturally and concisely to keep the conversation going.
+                Keep the same language as the messages in the history.
+                Do not repeat what you have already said.
                 Do not mention that you are AI. Do not explain. Output only the message text.
                 
-                Recent conversation:
+                Chat history:
                 %s
                 
                 User instructions:
@@ -139,7 +141,7 @@ public class DirectAutoReplyService {
                 .id(UUID.randomUUID())
                 .conversationId(conversationId)
                 .senderId(recipientId)
-                .content(openAiService.generateReply(prompt))
+                .content(groqService.generateReply(prompt))
                 .aiGenerated(true)
                 .createdAt(now)
                 .build());
@@ -173,6 +175,7 @@ public class DirectAutoReplyService {
                 sender.getUsername(),
                 message.getContent(),
                 message.isAiGenerated(),
+                message.isSpam(),
                 message.getCreatedAt()
         );
     }
