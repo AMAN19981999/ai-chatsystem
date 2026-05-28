@@ -3,6 +3,7 @@ package com.aichat.direct;
 import com.aichat.users.AppUserEntity;
 import com.aichat.users.AppUserRepository;
 import com.aichat.ai.GroqService;
+import com.aichat.websocket.PresenceManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -25,6 +26,7 @@ public class DirectMessageService {
     private final DirectMessageRepository messageRepository;
     private final DirectAutoReplyService autoReplyService;
     private final GroqService groqService;
+    private final PresenceManager presenceManager;
 
     public List<DirectConversationDto> listConversations() {
         AppUserEntity currentUser = currentUser();
@@ -227,6 +229,7 @@ public class DirectMessageService {
                 otherUser.getDisplayName(),
                 conversation.getStatus() == DirectConversationStatus.PENDING
                         && conversation.getRecipientId().equals(currentUser.getId()),
+                presenceManager.isUserOnline(otherUser.getUsername()),
                 conversation.getUpdatedAt()
         );
     }

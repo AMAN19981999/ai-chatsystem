@@ -1,6 +1,7 @@
 package com.aichat.ai;
 
 import com.aichat.config.AppProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import org.springframework.util.StreamUtils;
 public class GroqService {
 
     private final AppProperties appProperties;
+    private final ObjectMapper objectMapper;
 
     public String generateReply(String prompt) {
         return callGroq(List.of(Map.of("role", "user", "content", prompt)), GroqResponse.class, false).choices().get(0).message().content().trim();
@@ -30,7 +32,14 @@ public class GroqService {
                 "%s"
                 """.formatted(content);
 
-        return callGroq(List.of(Map.of("role", "user", "content", prompt)), SpamAnalysis.class, true);
+        try {
+            GroqResponse response = callGroq(List.of(Map.of("role", "user", "content", prompt)), GroqResponse.class, true);
+            String jsonContent = response.choices().get(0).message().content().trim();
+            return objectMapper.readValue(jsonContent, SpamAnalysis.class);
+        } catch (Exception e) {
+            System.err.println("Failed to analyze spam: " + e.getMessage());
+            return new SpamAnalysis(false, "Failed to analyze spam: " + e.getMessage());
+        }
     }
 
     private <T> T callGroq(List<Map<String, String>> messages, Class<T> responseType, boolean useJson) {
